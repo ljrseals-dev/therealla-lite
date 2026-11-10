@@ -20,7 +20,7 @@ Both scripts handle audio of any length. FlashSR itself accepts a fixed 5.12 s (
 
 ## Installation
 
-1. Install FlashSR from the reference implementation (https://github.com/jakeoneijk/FlashSR_Inference) and download its three weight files (`student_ldm.pth`, `sr_vocoder.pth`, `vae.pth`) into `weights/`.
+1. Install FlashSR from the reference implementation (https://github.com/jakeoneijk/FlashSR_Inference; its `Script/2_setup.sh` runs `pip install -e ./`) and download its three weight files (`student_ldm.pth`, `sr_vocoder.pth`, `vae.pth`) from the weights page linked in that repo's Readme (https://huggingface.co/datasets/jakeoneijk/FlashSR_weights) into `weights/`. See `WEIGHTS.md` for sources and licenses.
 2. Install dependencies:
 
 ```bash
@@ -64,5 +64,7 @@ python Pro.py --input ./recordings/ --output ./enhanced/ --batch
 Verified without GPU/FlashSR: the chunked overlap-add reproduces its input to about 1e-7 for lengths from 1 sample to 15 s, and the EQ and de-ess stages behave as documented. **Not tested:** FlashSR inference, DeepFilterNet, and the audio I/O libraries; the FlashSR constructor arguments and the `df.enhance` API follow their documentation and should be checked on first run.
 
 ## License
+
+The wrapper code in this repository is MIT-licensed (see `LICENSE`). The model weights are not part of this repository and are not covered by that license; see `WEIGHTS.md`.
 
 The wrapper is provided as-is. FlashSR is by Jaekwon Im and Juhan Nam (KAIST). A third-party port states that the FlashSR weights are licensed CC-BY-NC 4.0 (non-commercial); confirm the terms at the upstream repository before any commercial use.
