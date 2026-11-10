@@ -10,11 +10,13 @@ TheRealla turns cheap-microphone recordings into 48 kHz audio using **FlashSR** 
 | `Pro.py` | Resample, denoise, FlashSR, EQ, de-ess, optional gain trim, stereo widening, loudness |
 | `realla_common.py` | Shared helpers (both scripts need it in the same folder) |
 
-Both scripts handle audio of any length. FlashSR itself accepts a fixed 5.12 s (245,760 samples at 48 kHz), so audio is processed in 50%-overlapping Hann-windowed chunks and cross-faded. Overlap-add can leave seams or phase drift with a diffusion model, so listen for artifacts on long files.
+Both scripts handle audio of any length. FlashSR itself accepts a fixed 5.12 s (245,760 samples at 48 kHz), so audio is processed in 50%-overlapping Hann-windowed chunks and cross-faded. Pad samples are cropped from the output, but the model still sees them, so its output on the first and last chunks can be influenced by the padding (reflect padding for longer inputs, zeros for inputs shorter than one hop). Overlap-add can leave seams or phase drift with a diffusion model, so listen for artifacts on long files.
 
-**Channels:** mono in gives mono out (Pro can add pseudo-stereo widening). Stereo in gives stereo out; each channel goes through the whole chain independently, and widening is skipped unless `--widen-stereo-input` is set. More than two channels are downmixed to mono.
+**Channels:** mono in gives mono out (Pro can add pseudo-stereo widening). Stereo in gives stereo out; each channel goes through the whole chain independently, and widening is skipped unless `--widen-stereo-input` is set. More than two channels are downmixed to mono (6 channels are assumed to be 5.1 and the LFE channel is excluded).
 
-**Output:** 24-bit WAV by default (`--subtype PCM_16 | PCM_24 | FLOAT`). Source bit depth and sample rate do not carry extra information past the 48 kHz resampling step.
+**Output:** 24-bit WAV by default (`--subtype PCM_16 | PCM_24 | FLOAT`). If the final peak would exceed about -0.1 dBFS it is scaled down and a warning is printed; in that case the LUFS target is missed by that amount. Source bit depth and sample rate do not carry extra information past the 48 kHz resampling step.
+
+**Stage order and devices (Pro):** denoising runs at 48 kHz before FlashSR, so DeepFilterNet sees an upsampled signal; SR-then-denoise is untested. `--device` applies to FlashSR only; DeepFilterNet picks its own device. Pseudo-stereo for mono input is an equal-gain 10 ms delayed copy and will comb-filter if summed back to mono.
 
 ## Installation
 

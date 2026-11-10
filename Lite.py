@@ -5,8 +5,6 @@ Audio of any length is handled by chunked overlap-add (FlashSR itself is fixed a
 """
 import argparse
 
-import numpy as np
-
 import realla_common as rc
 
 try:

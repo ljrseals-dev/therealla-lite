@@ -4,7 +4,9 @@ widen -> loudness.
 Channel handling: mono in -> one pass, optional pseudo-stereo widening.
 Stereo in -> every stage runs on L and R independently; widening is skipped unless
 --widen-stereo-input is given.
-Stage order change vs. earlier versions: resample to 48 kHz first (DeepFilterNet needs 48 kHz).
+Stage order: resample to 48 kHz, denoise, then FlashSR. Denoising happens before SR (DeepFilterNet needs
+48 kHz, so it sees an upsampled signal whose top band is empty from a 16 kHz source). Whether SR-then-denoise
+sounds better is untested. --device does not reach DeepFilterNet; init_df() chooses its own device.
 """
 import argparse
 from pathlib import Path
@@ -26,6 +28,9 @@ try:  # API per DeepFilterNet docs; verify: python -c "import df.enhance as e; h
     HAS_DFN = True
 except ImportError:
     HAS_DFN = False
+
+
+HAAS_MS = 10   # delay for pseudo-stereo; note: summing to mono comb-filters
 
 
 def _fit(y, n):
@@ -117,8 +122,9 @@ class DimensionManPro:
             if not self.use_stereo_widen:
                 return audio
             x = audio[:, 0]
-            delayed = np.concatenate([np.zeros(5, np.float32), x[:-5]]) if len(x) > 5 else x
-            return np.column_stack((x, 0.8 * x + 0.2 * delayed))
+            d = int(HAAS_MS * rc.SR / 1000)
+            delayed = np.concatenate([np.zeros(d, np.float32), x[:-d]]) if len(x) > d else x
+            return np.column_stack((x, delayed))   # equal gain, so no level imbalance
         if self.widen_stereo_input:
             mid = (audio[:, 0] + audio[:, 1]) / 2
             side = (audio[:, 0] - audio[:, 1]) / 2 * 1.5
@@ -155,8 +161,13 @@ class DimensionManPro:
             raise NotADirectoryError(f"--batch needs --input to be a directory: {input_dir}")
         output_dir.mkdir(parents=True, exist_ok=True)
         files = sorted(f for f in input_dir.iterdir() if f.suffix.lower() in exts)
+        seen = set()
         for f in tqdm(files, desc="Batch processing"):
-            self.process(f, output_dir / (f.stem + ".wav"))
+            name = f.stem + ".wav"
+            if name in seen:   # e.g. a.wav and a.flac in the same folder
+                name = f"{f.stem}_{f.suffix[1:].lower()}.wav"
+            seen.add(name)
+            self.process(f, output_dir / name)
 
 
 def main():
