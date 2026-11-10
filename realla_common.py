@@ -19,8 +19,13 @@ def load_audio(path):
     import soundfile as sf
     audio, sr = sf.read(str(path), dtype="float32", always_2d=True)
     if audio.shape[1] > 2:
-        print(f"  [warn] {audio.shape[1]} channels found; downmixing to mono")
-        audio = audio.mean(axis=1, keepdims=True)
+        keep = list(range(audio.shape[1]))
+        if audio.shape[1] == 6:   # assume standard 5.1 order FL FR FC LFE BL BR
+            keep.remove(3)
+            print("  [warn] 6 channels: assuming 5.1 order, excluding LFE (ch 4), downmixing to mono")
+        else:
+            print(f"  [warn] {audio.shape[1]} channels found; downmixing all to mono")
+        audio = audio[:, keep].mean(axis=1, keepdims=True)
     return audio, sr
 
 
@@ -37,15 +42,16 @@ def chunked_apply(x, fn, win=WIN, hop=HOP):
     """Apply a fixed-length model `fn` (win samples in -> win samples out) to a 1-D
     signal of any length using Hann-windowed overlap-add.
 
-    The signal is edge-padded by `hop` on both sides so every real sample is covered
-    by windows summing to 1; padding is cropped away, so zero-padding never
-    contributes to the output. Output length == input length.
+    The signal is padded by `hop` on both sides (reflect when longer than `hop`, else
+    zeros) so every real sample is covered by windows summing to 1. Pad samples are
+    cropped from the output, but `fn` still sees the padding and its output on chunks
+    that contain pad can influence the edge of the real signal. Output length == input.
     """
     x = np.asarray(x, dtype=np.float32).reshape(-1)
     L = len(x)
     if L == 0:
         return x.copy()
-    xp = np.pad(x, (hop, hop), mode="reflect" if L > 1 else "constant")
+    xp = np.pad(x, (hop, hop), mode="reflect" if L > hop else "constant")
     P = len(xp)
     n = max(1, -(-(P - win) // hop) + 1)
     total = (n - 1) * hop + win
@@ -84,6 +90,7 @@ def super_resolve(audio, model, device):
         t = torch.from_numpy(chunk).float().unsqueeze(0).to(device)
         with torch.no_grad():
             out = model(t, lowpass_input=False)
+        # reshape(-1) flattens any layout; chunked_apply's length check then catches a channel mix-up
         return out.detach().float().cpu().numpy().reshape(-1)
 
     return np.column_stack([chunked_apply(audio[:, c], fn) for c in range(audio.shape[1])])
@@ -106,9 +113,14 @@ def loudness_normalize(audio, target_lufs):
 
 
 def peak_guard(audio, ceiling=0.989):
-    """Scale down (never up) so the peak stays below ~-0.1 dBFS."""
+    """Scale down (never up) so the peak stays below ~-0.1 dBFS; warns when it engages."""
     peak = float(np.max(np.abs(audio))) if audio.size else 0.0
-    return audio * (ceiling / peak) if peak > ceiling else audio
+    if peak > ceiling:
+        db = 20 * np.log10(ceiling / peak)
+        print(f"  [warn] peak {peak:.3f} > {ceiling}; scaled by {db:.2f} dB to avoid clipping "
+              f"(any LUFS target is now missed by about that amount)")
+        return audio * (ceiling / peak)
+    return audio
 
 
 def save_audio(path, audio, subtype="PCM_24"):
